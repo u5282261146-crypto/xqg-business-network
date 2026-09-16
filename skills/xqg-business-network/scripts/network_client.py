@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib import request,error,parse
 
 ROOT=Path(__file__).resolve().parents[1]
-CLIENT_VERSION='0.3.9'
+CLIENT_VERSION='0.4.0'
 def version_tuple(value):
     if not isinstance(value,str) or not re.fullmatch(r'\d+\.\d+\.\d+',value):return None
     return tuple(map(int,value.split('.')))
@@ -131,7 +131,7 @@ def automatic_token(base_url):
         if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:raise ValueError('unsafe session file')
         token=f.read(129).strip()
     if not re.fullmatch(r'[A-Za-z0-9_-]{43}',token):raise ValueError('invalid session file')
-    req=request.Request(base_url+'/v1/session',data=b'{}',headers={'Content-Type':'application/json','User-Agent':'XQG-Business-Network/0.3.9','Authorization':'Bearer '+token},method='POST')
+    req=request.Request(base_url+'/v1/session',data=b'{}',headers={'Content-Type':'application/json','User-Agent':'XQG-Business-Network/0.4.0','Authorization':'Bearer '+token},method='POST')
     with request.build_opener(NoRedirect).open(req,timeout=15) as response:
         data=json.loads(response.read(4096))
     if data.get('session_ready') is not True:raise ValueError('session unavailable')
@@ -151,7 +151,7 @@ def remote(config,args):
         payload=dict(id=args.id,scope=args.scope,text=Path(args.file).read_text(),notice_shown=args.notice_shown,notice_version='2026-09-14-v3' if args.scope=='conversation_turn' else '2026-09-13-v2')
     elif args.command=='register-profile':payload=dict(id=args.id,confirmed=args.confirmed,card=json.loads(Path(args.file).read_text()))
     elif args.command=='delete-submission':payload=dict(id=args.id)
-    headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'XQG-Business-Network/0.3.9'}
+    headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'XQG-Business-Network/0.4.0'}
     token_var=config.get('token_env')
     token_path=config.get('token_file')
     automatic=config.get('automatic_session',False)
@@ -181,7 +181,10 @@ def remote(config,args):
         data=json.loads(body)
     if data.get('status')!='ok':return dict(status='service_unavailable',message='共享查询暂不可用。')
     result=dict(status='ok',audience='public',as_of=data.get('as_of'),**update_metadata(data,notify=args.command=='status'))
-    if args.command=='status':return dict(result,mode='http',search_available=bool(data.get('search_available')),filtered_stats_available=bool(data.get('filtered_stats_available')),submission_available=bool(data.get('submission_available')),conversation_turn_available=bool(data.get('conversation_turn_available')),registration_available=bool(data.get('registration_available')),scheduler_available='由宿主另行核实')
+    if args.command=='status':
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('xqg_reception_config',Path(__file__).with_name('reception_config.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        return dict(result,**module.effective(data.get('reception_config')),mode='http',search_available=bool(data.get('search_available')),filtered_stats_available=bool(data.get('filtered_stats_available')),submission_available=bool(data.get('submission_available')),conversation_turn_available=bool(data.get('conversation_turn_available')),registration_available=bool(data.get('registration_available')),scheduler_available='由宿主另行核实')
     if args.command in ('register-profile','my-profile'):
         return dict(result,**{k:data[k] for k in ('saved','registered','person_id','revision','card','matching_open','registration_status','confirmed_at','replayed') if k in data})
     if args.command=='submit':return dict(result,submission_id=data.get('submission_id'),saved=data.get('saved') is True,registered=False,retention_days=data.get('retention_days'))
