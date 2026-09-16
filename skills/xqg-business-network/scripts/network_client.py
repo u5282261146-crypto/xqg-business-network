@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib import request,error,parse
 
 ROOT=Path(__file__).resolve().parents[1]
-CLIENT_VERSION='0.3.8'
+CLIENT_VERSION='0.3.9'
 def version_tuple(value):
     if not isinstance(value,str) or not re.fullmatch(r'\d+\.\d+\.\d+',value):return None
     return tuple(map(int,value.split('.')))
@@ -17,18 +17,9 @@ def update_metadata(data,notify=False):
     minimum=policy.get('minimum_supported')
     newer=version_tuple(latest) is not None and version_tuple(latest)>version_tuple(CLIENT_VERSION)
     required=version_tuple(minimum) is not None and version_tuple(minimum)>version_tuple(CLIENT_VERSION)
-    due=False
-    if newer and notify:
-        try:
-            folder=Path.home()/'.config/xqg-entrepreneur-network';folder.mkdir(parents=True,exist_ok=True,mode=0o700)
-            marker=folder/'update-notice.json'
-            if marker.is_symlink():raise ValueError('unsafe notice marker')
-            previous=json.loads(marker.read_text()) if marker.exists() else {}
-            due=previous.get('version')!=latest
-            if due:
-                with marker.open('w') as f:
-                    marker.chmod(0o600);json.dump({'version':latest},f)
-        except (OSError,ValueError,TypeError,AttributeError):due=False
+    # Re-check at each new use; the assistant suppresses repeat notices within a conversation.
+    # A persistent per-version marker would incorrectly silence later conversations.
+    due=bool(newer and notify)
     return dict(client_version=CLIENT_VERSION,client_latest=latest if version_tuple(latest) else None,
         update_available=newer,update_required=required,update_notice_due=due,
         update_entry='scripts/update_skill.py',existing_service_available=not required)
@@ -140,7 +131,7 @@ def automatic_token(base_url):
         if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:raise ValueError('unsafe session file')
         token=f.read(129).strip()
     if not re.fullmatch(r'[A-Za-z0-9_-]{43}',token):raise ValueError('invalid session file')
-    req=request.Request(base_url+'/v1/session',data=b'{}',headers={'Content-Type':'application/json','User-Agent':'XQG-Business-Network/0.3.8','Authorization':'Bearer '+token},method='POST')
+    req=request.Request(base_url+'/v1/session',data=b'{}',headers={'Content-Type':'application/json','User-Agent':'XQG-Business-Network/0.3.9','Authorization':'Bearer '+token},method='POST')
     with request.build_opener(NoRedirect).open(req,timeout=15) as response:
         data=json.loads(response.read(4096))
     if data.get('session_ready') is not True:raise ValueError('session unavailable')
@@ -160,7 +151,7 @@ def remote(config,args):
         payload=dict(id=args.id,scope=args.scope,text=Path(args.file).read_text(),notice_shown=args.notice_shown,notice_version='2026-09-14-v3' if args.scope=='conversation_turn' else '2026-09-13-v2')
     elif args.command=='register-profile':payload=dict(id=args.id,confirmed=args.confirmed,card=json.loads(Path(args.file).read_text()))
     elif args.command=='delete-submission':payload=dict(id=args.id)
-    headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'XQG-Business-Network/0.3.8'}
+    headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'XQG-Business-Network/0.3.9'}
     token_var=config.get('token_env')
     token_path=config.get('token_file')
     automatic=config.get('automatic_session',False)

@@ -1,20 +1,20 @@
 {
   "schema": 1,
-  "version": "0.3.8",
-  "summary": "结构化推荐、关键词人数统计、确认入库与编号，微信确认后开放匹配。",
+  "version": "0.3.9",
+  "summary": "每次新开始使用时静默检查最新版，简洁提醒并由助手协助更新。",
   "files": {
     "service.json": "8d9c98757e9adb388dd2f2c566ec75650ffff3df35f220bf119f1260012d1933",
-    "SKILL.md": "d32f97a4649c70c8e50ca4b76f5f5f673c91c7a04446d36228b9139843ca386f",
+    "SKILL.md": "1aef39b8ad75dc87dd2ba601c9203bd269ae5e72d0c25f92c101b7b03a4b0759",
     "agents/openai.yaml": "fb1c037ba20ef8315bca44c4c91fa1072b504e21b7b35182c1e4f29a911c3bde",
     "references/profile-card.md": "98a902dfccb18e7c60104da9d927cb2fcd364fa5a9246404fb8485b38888e392",
     "references/registration.md": "0c92ff2f98ea3658c6d9b1ac9e73058d1c08c5ceeda688db2f9d0f7f3cbd7c6f",
     "references/query-and-radar.md": "4f101179baed677fe32b57dcaf708affdd06c6da1210dba822b552149c524e50",
     "references/platforms.md": "ffe2b2f4d44fb192f6a56488a484bddcad51f228247be642ea89ede2d4ac1779",
     "references/interaction-records.md": "e3a7bb1635e2fb6f744913d5d7a58f3720983ecc87072bf54aba11fe91ffc3a9",
-    "scripts/network_client.py": "be2b2124007052c002e30096e7bde584818dacc2beb9e2b2f7e4aa99b3606d1a",
+    "scripts/network_client.py": "1af8df0377dd0bf3464c00330cf4e0f9d4014413adbd3443c401e6268fa3100f",
     "scripts/setup_connection.py": "140e7c26e168c7b7b86b7fbd3699d88ccecbb313a7135027c158375c131dd7a9",
     "scripts/update_skill.py": "cabd70a5b82e87058268cf87d19bc74ab402cf8b76f6782ea22d3637ad6ae0c0",
-    "references/updates.md": "dfe26956f2aa6302128592e5d29ace47e5064271d0f1c0f99711153f605aa99a",
+    "references/updates.md": "1257081111c4026b317364f59d0b1de4b07de32dbac17d282d6a28ece5d5a509",
     "LICENSE": "e9bdafc87e889f75622aade8b0210f48e24fef9fcaeaf78c89f2128d24e6d8de"
   },
   "legacy_baselines": [
