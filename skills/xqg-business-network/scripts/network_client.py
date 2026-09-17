@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib import request,error,parse
 
 ROOT=Path(__file__).resolve().parents[1]
-CLIENT_VERSION='0.4.0'
+CLIENT_VERSION='0.4.1'
 def version_tuple(value):
     if not isinstance(value,str) or not re.fullmatch(r'\d+\.\d+\.\d+',value):return None
     return tuple(map(int,value.split('.')))
@@ -45,7 +45,7 @@ def project_person(p):
         items=[dict(item_id=str(i.get('item_id','')),kind=str(i.get('kind','')),text=scrub(i.get('text')),
             status=scrub(i.get('status'))) for i in p.get('items',[]) if i.get('kind') in ('resource','need','request')],
         last_confirmed_at=p.get('last_confirmed_at'),confirmation_status=scrub(p.get('confirmation_status')),
-        identity_review_required=bool(p.get('identity_review_required')))
+        identity_review_required=bool(p.get('identity_review_required')),match_basis=p.get('match_basis'))
 
 def local(config,args):
     if args.command in ('submit','delete-submission','stop-recording','register-profile','my-profile'):return dict(status='not_connected',message='提交需要连接正式网络；本地查人模式不上传记录。')
@@ -81,12 +81,12 @@ def local(config,args):
             p['identity_review_required']=bool(db.execute("SELECT 1 FROM identity_review WHERE (person_a=? OR person_b=?) AND status='待人工核对' LIMIT 1",(p['person_id'],p['person_id'])).fetchone())
             if args.command in ('search','stats'):
                 if args.city.casefold() not in ' '.join(p['cities']).casefold():continue
-                if args.kind:
-                    p['items']=[i for i in p['items'] if i['kind']==args.kind]
-                    if not p['items']:continue
-                    searchable=' '.join(i['text'] for i in p['items'])
-                else:searchable=' '.join([p['name']]+p['cities']+p['companies']+p['businesses']+p['roles']+p['industries']+[i['text'] for i in p['items']])
-                if not all(q.casefold() in searchable.casefold() for q in args.query.split()):continue
+                import importlib.util
+                spec=importlib.util.spec_from_file_location('xqg_semantics',Path(__file__).with_name('semantic_search.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+                candidate=module.rank(p,args.query,args.kind)
+                if candidate is None:continue
+                p=candidate[1]
+
             matched+=1
             if args.command!='stats' and len(results)<args.limit:results.append(project_person(p))
         if args.command=='stats':return dict(base,matched_profile_count=matched,query=args.query,city=args.city,kind=args.kind)
@@ -116,6 +116,18 @@ def ssh_operator(config,args):
 class NoRedirect(request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
+def open_request(req, retry=False):
+    # Retry transient transport failures only. Never retry denied or rate-limited requests.
+    import time
+    for attempt in range(2 if retry else 1):
+        try:return request.build_opener(NoRedirect).open(req,timeout=8)
+        except error.HTTPError as exc:
+            if not retry or attempt or exc.code not in (502,503,504):raise
+            exc.close()
+        except (error.URLError,TimeoutError,ConnectionError):
+            if not retry or attempt:raise
+        time.sleep(0.4)
+
 def automatic_token(base_url):
     # Persist before enrollment: retry or offline failure reuses the same identity.
     folder=Path.home()/'.config/xqg-entrepreneur-network';folder.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -131,8 +143,8 @@ def automatic_token(base_url):
         if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:raise ValueError('unsafe session file')
         token=f.read(129).strip()
     if not re.fullmatch(r'[A-Za-z0-9_-]{43}',token):raise ValueError('invalid session file')
-    req=request.Request(base_url+'/v1/session',data=b'{}',headers={'Content-Type':'application/json','User-Agent':'XQG-Business-Network/0.4.0','Authorization':'Bearer '+token},method='POST')
-    with request.build_opener(NoRedirect).open(req,timeout=15) as response:
+    req=request.Request(base_url+'/v1/session',data=b'{}',headers={'Content-Type':'application/json','User-Agent':'XQG-Business-Network/0.4.1','Authorization':'Bearer '+token},method='POST')
+    with open_request(req, retry=True) as response:
         data=json.loads(response.read(4096))
     if data.get('session_ready') is not True:raise ValueError('session unavailable')
     return token
@@ -144,14 +156,16 @@ def remote(config,args):
         return dict(status='configuration_error',message='共享连接需要运营者提供的 HTTPS 服务地址。')
     endpoint={'status':'capabilities','stats':'stats','search':'search','person':'person','submit':'submissions','delete-submission':'submissions/delete','stop-recording':'recording/stop','register-profile':'registrations','my-profile':'registration'}[args.command]
     payload={}
-    if args.command=='search':payload=dict(query=args.query,city=args.city,kind=args.kind,limit=args.limit)
+    if args.command=='search':
+        payload=dict(query=args.query,city=args.city,kind=args.kind,limit=args.limit)
+        if getattr(args,'offset',0):payload['offset']=args.offset
     elif args.command=='stats' and getattr(args,'query',None):payload=dict(query=args.query,city=args.city,kind=args.kind)
     elif args.command=='person':payload=dict(person_id=args.id)
     elif args.command=='submit':
         payload=dict(id=args.id,scope=args.scope,text=Path(args.file).read_text(),notice_shown=args.notice_shown,notice_version='2026-09-14-v3' if args.scope=='conversation_turn' else '2026-09-13-v2')
     elif args.command=='register-profile':payload=dict(id=args.id,confirmed=args.confirmed,card=json.loads(Path(args.file).read_text()))
     elif args.command=='delete-submission':payload=dict(id=args.id)
-    headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'XQG-Business-Network/0.4.0'}
+    headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'XQG-Business-Network/0.4.1'}
     token_var=config.get('token_env')
     token_path=config.get('token_file')
     automatic=config.get('automatic_session',False)
@@ -175,7 +189,7 @@ def remote(config,args):
     encoded=json.dumps(payload,ensure_ascii=False).encode()
     if len(encoded)>8192:return dict(status='invalid_request',message='内容超出提交长度，请精简档案后重新请本人确认；本次未保存。')
     req=request.Request(base_url+'/v1/'+endpoint,data=encoded,headers=headers,method='POST')
-    with request.build_opener(NoRedirect).open(req,timeout=15) as response:
+    with open_request(req, retry=args.command in ('status','stats','search','person','my-profile')) as response:
         body=response.read(1024*1024+1)
         if len(body)>1024*1024:raise ValueError('response too large')
         data=json.loads(body)
@@ -191,7 +205,7 @@ def remote(config,args):
     if args.command=='stop-recording':return dict(result,recording_stopped=data.get('recording_stopped') is True)
     if args.command=='delete-submission':return dict(result,deleted=data.get('deleted') is True)
     if args.command=='stats':return dict(result,public_profile_count=data.get('public_profile_count'),matched_profile_count=data.get('matched_profile_count'),query=data.get('query'),city=data.get('city'),kind=data.get('kind'),resource_count=data.get('resource_count'),need_count=data.get('need_count'))
-    return dict(result,results=[project_person(p) for p in data.get('results',[])[:args.limit]])
+    return dict(result,matched_profile_count=data.get('matched_profile_count'),next_offset=data.get('next_offset'),results=[project_person(p) for p in data.get('results',[])[:args.limit]])
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -200,7 +214,7 @@ def main():
     sub.add_parser('status')
     stats=sub.add_parser('stats');stats.add_argument('--query');stats.add_argument('--city',default='');stats.add_argument('--kind',choices=['resource','need'])
     s=sub.add_parser('search');s.add_argument('--query',required=True);s.add_argument('--city',default='')
-    s.add_argument('--kind',choices=['resource','need']);s.add_argument('--limit',type=int,default=3)
+    s.add_argument('--kind',choices=['resource','need']);s.add_argument('--limit',type=int,default=100);s.add_argument('--offset',type=int,default=0);s.add_argument('--all',action='store_true')
     p=sub.add_parser('person');p.add_argument('--id',required=True);p.set_defaults(limit=1)
     subm=sub.add_parser('submit');subm.add_argument('--file',required=True);subm.add_argument('--scope',choices=['profile_summary','conversation_excerpt','conversation_turn'],required=True);subm.add_argument('--id',required=True);subm.add_argument('--notice-shown',action='store_true',required=True)
     sub.add_parser('stop-recording')
@@ -208,20 +222,34 @@ def main():
     registration=sub.add_parser('register-profile');registration.add_argument('--file',required=True);registration.add_argument('--id',required=True);registration.add_argument('--confirmed',action='store_true',required=True)
     delete=sub.add_parser('delete-submission');delete.add_argument('--id',required=True)
     args=parser.parse_args()
-    if hasattr(args,'limit'):args.limit=max(1,min(10,args.limit))
+    if hasattr(args,'limit'):args.limit=max(1,min(100,args.limit))
     if args.command=='stats' and ((args.query is not None and not args.query.strip()) or (not args.query and (args.city or args.kind))):return dict(status='invalid_request',message='按条件统计需要提供查询关键词。')
     if args.command=='search' and not args.query.strip():return dict(status='invalid_request',message='请先明确要找的需求或资源，不支持空查询枚举。')
-    default_config=ROOT/'operator.local.json'
-    if not default_config.is_file():default_config=Path.home()/'.config/xqg-entrepreneur-network/connection.json'
-    path=Path(args.config or os.environ.get('XQG_NETWORK_CONFIG') or default_config).expanduser()
-    if not path.is_file() and not args.config and not os.environ.get('XQG_NETWORK_CONFIG'):
-        path=ROOT/'service.json'
+    # Reception always uses the distributed public endpoint. Operator access is explicit.
+    path=Path(args.config or ROOT/'service.json').expanduser()
     if not path.is_file():return dict(status='not_connected',search_available=False,message='尚未连接创业者资源网络。可以先整理档案卡，通过小强哥完成登记或申请引荐。')
     try:
         config=json.loads(path.read_text())
         if config.get('mode')=='ssh_operator':return ssh_operator(config,args)
         if config.get('mode')=='local':return local(config,args)
-        if config.get('mode')=='http':return remote(config,args)
+        if config.get('mode')=='http':
+            result=remote(config,args)
+            if args.command=='search' and getattr(args,'all',False) and result.get('status')=='ok':
+                seen={p['person_id'] for p in result['results']}
+                for _ in range(19):
+                    offset=result.get('next_offset')
+                    if offset is None:break
+                    args.offset=offset
+                    try:page=remote(config,args)
+                    except (OSError,ValueError,error.URLError):
+                        result['partial']=True;result['continuation_status']='service_unavailable';break
+                    if page.get('status')!='ok':
+                        result['partial']=True;result['continuation_status']=page.get('status');break
+                    for person in page['results']:
+                        if person['person_id'] not in seen:result['results'].append(person);seen.add(person['person_id'])
+                    result['next_offset']=page.get('next_offset')
+                result['complete']=result.get('next_offset') is None and not result.get('partial',False)
+            return result
         return dict(status='configuration_error',message='未识别的连接方式。')
     except error.HTTPError as exc:
         return http_failure(exc)

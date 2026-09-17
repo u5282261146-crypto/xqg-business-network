@@ -22,7 +22,7 @@ presentation.layout=cards 使用独立短信息块；compact 使用姓名标题�
 
 ## 有限流程选项
 
-- max_recommendations：最多推荐人数，只允许1–3，按相关性排序，不凑数。
+- max_recommendations：单页展示目标，只允许1–100，默认100；完整名单继续分页，不是总人数上限。按相关性排序，不凑数。
 - max_followup_questions：结果后的校准问题上限，允许0或1。“想对接谁/也可补充需求”仍是两个可选入口，不要求同时回答；不得因配置变成连续访谈。
 - suggest_profile_on_no_match：无合适结果时是否附上资源建档邀请。false时简短承接结果并等待用户选择；不擅自建卡。
 - ask_background_on_contact：联系意愿出现且缺少业务背景时，是否附一次补充背景邀请。不影响用户联系，不再次询问已有信息。
